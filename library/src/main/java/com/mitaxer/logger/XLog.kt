@@ -27,15 +27,21 @@ object XLog {
     // 日志级别
     // LEVEL_SILENT 由 Java 侧定义
     const val LEVEL_SILENT  = 1
-    val LEVEL_VERBOSE: Int by lazy { nativeGetLevelVerbose() }
-    val LEVEL_DEBUG: Int   by lazy { nativeGetLevelDebug() }
-    val LEVEL_INFO: Int    by lazy { nativeGetLevelInfo() }
-    val LEVEL_WARNING: Int by lazy { nativeGetLevelWarning() }
-    val LEVEL_ERROR: Int   by lazy { nativeGetLevelError() }
 
-    // 类加载时立即加载 .so
+    val LEVEL_VERBOSE: Int
+    val LEVEL_DEBUG: Int
+    val LEVEL_INFO: Int
+    val LEVEL_WARNING: Int
+    val LEVEL_ERROR: Int
+
+    // 类加载时加载 .so 并从 native 获取级别值
     init {
         System.loadLibrary("android-logger")
+        LEVEL_VERBOSE = nativeGetLevelVerbose()
+        LEVEL_DEBUG   = nativeGetLevelDebug()
+        LEVEL_INFO    = nativeGetLevelInfo()
+        LEVEL_WARNING = nativeGetLevelWarning()
+        LEVEL_ERROR   = nativeGetLevelError()
     }
 
     @JvmStatic
