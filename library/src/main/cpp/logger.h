@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <thread>
 #include <atomic>
+#include <android/log.h>
 
 namespace mitaxer {
 
@@ -20,14 +21,14 @@ constexpr unsigned char kMagicSyncNoCrypt    = 0x08;
 constexpr unsigned char kMagicAsyncNoCrypt   = 0x09;
 constexpr unsigned char kMagicEnd            = 0x00;
 
-// 日志级别
+// 日志级别（使用 Android NDK 官方常量）
 enum LogLevel : int32_t {
-    LEVEL_SILENT  = 1,  // 关闭输出
-    LEVEL_VERBOSE = 2,
-    LEVEL_DEBUG   = 3,
-    LEVEL_INFO    = 4,
-    LEVEL_WARNING = 5,
-    LEVEL_ERROR   = 6,
+    LEVEL_SILENT  = 1,                     // 关闭输出（非 Android 标准）
+    LEVEL_VERBOSE = ANDROID_LOG_VERBOSE,
+    LEVEL_DEBUG   = ANDROID_LOG_DEBUG,
+    LEVEL_INFO    = ANDROID_LOG_INFO,
+    LEVEL_WARNING = ANDROID_LOG_WARN,
+    LEVEL_ERROR   = ANDROID_LOG_ERROR,
 };
 
 // 格式缓冲上下限

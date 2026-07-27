@@ -24,36 +24,17 @@ object XLog {
     private const val TAG = "XLog"
     private var initialized = false
 
-    // 日志级别
-    // LEVEL_SILENT 由 Java 侧定义
-    const val LEVEL_SILENT  = 1
+    // 日志级别（使用 Android SDK 官方常量）
+    const val LEVEL_SILENT  = 1   // 关闭输出（非 Android 标准）
+    const val LEVEL_VERBOSE = Log.VERBOSE
+    const val LEVEL_DEBUG   = Log.DEBUG
+    const val LEVEL_INFO    = Log.INFO
+    const val LEVEL_WARNING = Log.WARN
+    const val LEVEL_ERROR   = Log.ERROR
 
-    val LEVEL_VERBOSE: Int
-    val LEVEL_DEBUG: Int
-    val LEVEL_INFO: Int
-    val LEVEL_WARNING: Int
-    val LEVEL_ERROR: Int
-
-    // 类加载时加载 .so 并从 native 获取级别值
     init {
         System.loadLibrary("android-logger")
-        LEVEL_VERBOSE = nativeGetLevelVerbose()
-        LEVEL_DEBUG   = nativeGetLevelDebug()
-        LEVEL_INFO    = nativeGetLevelInfo()
-        LEVEL_WARNING = nativeGetLevelWarning()
-        LEVEL_ERROR   = nativeGetLevelError()
     }
-
-    @JvmStatic
-    private external fun nativeGetLevelVerbose(): Int
-    @JvmStatic
-    private external fun nativeGetLevelDebug(): Int
-    @JvmStatic
-    private external fun nativeGetLevelInfo(): Int
-    @JvmStatic
-    private external fun nativeGetLevelWarning(): Int
-    @JvmStatic
-    private external fun nativeGetLevelError(): Int
 
     /** 格式缓冲/单条日志 body 上下限（与 C++ 层一致） */
     const val MIN_BODY_SIZE = 256

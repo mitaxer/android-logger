@@ -70,28 +70,3 @@ Java_com_mitaxer_logger_XLog_nativeClose(
         jclass /*thiz*/) {
     g_logger.close();
 }
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_mitaxer_logger_XLog_nativeGetLevelVerbose(JNIEnv*, jclass) {
-    return mitaxer::LEVEL_VERBOSE;
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_mitaxer_logger_XLog_nativeGetLevelDebug(JNIEnv*, jclass) {
-    return mitaxer::LEVEL_DEBUG;
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_mitaxer_logger_XLog_nativeGetLevelInfo(JNIEnv*, jclass) {
-    return mitaxer::LEVEL_INFO;
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_mitaxer_logger_XLog_nativeGetLevelWarning(JNIEnv*, jclass) {
-    return mitaxer::LEVEL_WARNING;
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_mitaxer_logger_XLog_nativeGetLevelError(JNIEnv*, jclass) {
-    return mitaxer::LEVEL_ERROR;
-}
