@@ -1,0 +1,8 @@
+jdk:
+  - openjdk17
+
+before_install:
+  - sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
+
+install:
+  - ./gradlew :library:build
