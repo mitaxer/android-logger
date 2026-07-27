@@ -70,45 +70,6 @@ bool Logger::init(const LoggerConfig& config) {
     // 立即刷出崩溃残留的日志
     flush_all();
 
-    // 输出启动配置（实际 clamp 后的值）
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog] === init complete ===");
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   logDir:      %s", config_.log_dir.c_str());
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   cacheDir:    %s", config_.cache_dir.c_str());
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   namePrefix:  %s", config_.name_prefix.c_str());
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   fileLevel:   %d (%s)", config_.file_level,
-        config_.file_level == LEVEL_VERBOSE ? "VERBOSE" :
-        config_.file_level == LEVEL_DEBUG   ? "DEBUG" :
-        config_.file_level == LEVEL_INFO    ? "INFO" :
-        config_.file_level == LEVEL_WARNING ? "WARNING" :
-        config_.file_level == LEVEL_ERROR   ? "ERROR" :
-        config_.file_level == LEVEL_SILENT  ? "SILENT" : "UNKNOWN");
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   consoleLevel:%d (%s)", config_.console_level,
-        config_.console_level == LEVEL_VERBOSE ? "VERBOSE" :
-        config_.console_level == LEVEL_DEBUG   ? "DEBUG" :
-        config_.console_level == LEVEL_INFO    ? "INFO" :
-        config_.console_level == LEVEL_WARNING ? "WARNING" :
-        config_.console_level == LEVEL_ERROR   ? "ERROR" :
-        config_.console_level == LEVEL_SILENT  ? "SILENT" : "UNKNOWN");
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   bodySize:    %d (range %d~%d, clamp)", config_.body_size, kMinBodySize, kMaxBodySize);
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   mmapSize:    %d (range %d~%d, clamp)", config_.mmap_size, kMinMmapSize, kMaxMmapSize);
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   maxFileSize: %d (0=不分割)", config_.max_file_size);
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   maxAliveSec: %lld (%.1f 天)", (long long)config_.max_alive_sec,
-        (double)config_.max_alive_sec / 86400.0);
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog]   mmapPos:     %zu", mmap_pos_);
-    __android_log_print(ANDROID_LOG_INFO, "XLog",
-        "[XLog] ===================");
-
     running_ = true;
     flush_thread_ = new std::thread(&Logger::async_flush_loop, this);
     return true;
