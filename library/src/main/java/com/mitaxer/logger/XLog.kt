@@ -70,7 +70,7 @@ object XLog {
         context: Context,
         namePrefix: String = "APP",
         fileLevel: Int = LEVEL_VERBOSE,
-        consoleLevel: Int = LEVEL_SILENT,
+        consoleLevel: Int = LEVEL_VERBOSE,
         bodySize: Int = DEFAULT_BODY_SIZE,
         mmapSize: Int = DEFAULT_MMAP_SIZE,
         maxFileSize: Int = DEFAULT_MAX_FILE_SIZE
