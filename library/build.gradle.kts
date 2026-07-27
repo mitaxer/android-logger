@@ -32,7 +32,7 @@ android {
     }
 
     buildFeatures {
-        prefab = true
+        // prefab = true  // 不需要，关闭以避免触发 CMake/NDK 构建环境依赖
     }
 
     externalNativeBuild {
