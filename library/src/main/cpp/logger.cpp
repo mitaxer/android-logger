@@ -72,6 +72,33 @@ bool Logger::init(const LoggerConfig& config) {
 
     running_ = true;
     flush_thread_ = new std::thread(&Logger::async_flush_loop, this);
+
+    // 写入启动配置（走正常写入路径，文件和 logcat 按各自级别处理）
+    char cfg_line[512];
+    snprintf(cfg_line, sizeof(cfg_line), "=== XLog init complete ===");
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  namePrefix:  %s", config_.name_prefix.c_str());
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  logDir:      %s", config_.log_dir.c_str());
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  cacheDir:    %s", config_.cache_dir.c_str());
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  fileLevel:   %d", config_.file_level);
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  consoleLevel:%d", config_.console_level);
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  bodySize:    %d", config_.body_size);
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  mmapSize:    %d", config_.mmap_size);
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  maxFileSize: %d", config_.max_file_size);
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  maxAliveSec: %lld (%.1f 天)", (long long)config_.max_alive_sec,
+             (double)config_.max_alive_sec / 86400.0);
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "=======================");
+    write(LEVEL_INFO, "XLog", cfg_line);
+
     return true;
 }
 

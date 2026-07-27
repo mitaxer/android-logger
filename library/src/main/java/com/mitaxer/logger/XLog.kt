@@ -90,19 +90,7 @@ object XLog {
             val result = nativeInit(logDir, cacheDir, namePrefix, fileLevel, consoleLevel, bodySize, mmapSize, maxFileSize)
             if (result) {
                 initialized = true
-                val fileLevelName = levelName(fileLevel)
-                val consoleLevelName = levelName(consoleLevel)
-                i(TAG, "=== XLog init complete ===")
-                i(TAG, "  namePrefix:  $namePrefix")
-                i(TAG, "  logDir:      $logDir")
-                i(TAG, "  cacheDir:    $cacheDir")
-                i(TAG, "  fileLevel:   $fileLevel ($fileLevelName)")
-                i(TAG, "  consoleLevel:$consoleLevel ($consoleLevelName)")
-                i(TAG, "  bodySize:    $bodySize")
-                i(TAG, "  mmapSize:    $mmapSize")
-                i(TAG, "  maxFileSize: $maxFileSize")
-                i(TAG, "  maxAliveSec: 604800 (7.0 天)")
-                i(TAG, "======================")
+                i(TAG, "init succeeded")
             } else {
                 Log.e(TAG, "nativeInit failed")
             }
