@@ -32,6 +32,11 @@ object XLog {
     const val LEVEL_WARNING = 5  // Android: WARN
     const val LEVEL_ERROR   = 6  // Android: ERROR
 
+    // 类加载时立即加载 .so，确保在任何方法调用前 native 方法可用
+    init {
+        System.loadLibrary("android-logger")
+    }
+
     /** 格式缓冲/单条日志 body 上下限（与 C++ 层一致） */
     const val MIN_BODY_SIZE = 256
     const val MAX_BODY_SIZE = 64 * 1024
@@ -76,8 +81,6 @@ object XLog {
         }
 
         try {
-            System.loadLibrary("android-logger")
-
             val logDir = "${context.filesDir.absolutePath}/log"
             val cacheDir = "${context.cacheDir.absolutePath}/xlog"
 
