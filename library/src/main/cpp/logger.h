@@ -69,6 +69,9 @@ public:
     // 关闭
     void close();
 
+    // 输出当前配置信息（用于文件头或 logcat）
+    void print_config(bool to_logcat);
+
 private:
     void async_flush_loop();
     // MMAP 恢复：扫描有效日志，找到正确写入位置
@@ -94,6 +97,7 @@ private:
     std::thread* flush_thread_ = nullptr;
     std::atomic<bool> running_{false};
     std::atomic<bool> need_flush_{false};
+    std::atomic<bool> manual_flush_{false};
 };
 
 } // namespace mitaxer

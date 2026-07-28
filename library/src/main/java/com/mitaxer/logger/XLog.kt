@@ -163,10 +163,11 @@ object XLog {
 
     // ── 控制 ──────────────────────────────────────────
 
-    /** 触发异步刷盘 */
+    /** 触发异步刷盘，并追加一条分隔标记到日志 */
     @JvmStatic
     fun flush() {
         if (!initialized) return
+        nativeWrite(LEVEL_INFO, TAG, "---============ 手动刷新到文件 ============---")
         nativeFlush()
     }
 

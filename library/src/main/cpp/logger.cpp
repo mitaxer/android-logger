@@ -20,6 +20,59 @@ namespace mitaxer {
 Logger::Logger() = default;
 Logger::~Logger() { close(); }
 
+// ── 辅助：构建当前期望的文件路径 ───────────────────
+
+static std::string build_log_path(const std::string& log_dir,
+                                   const std::string& prefix,
+                                   const std::string& date_str,
+                                   int index) {
+    if (index == 0) {
+        return log_dir + "/" + prefix + "_" + date_str + ".xlog";
+    }
+    return log_dir + "/" + prefix + "_" + date_str + "_" + std::to_string(index) + ".xlog";
+}
+
+// ── 输出配置信息（用于文件头） ──────────────────────
+
+void Logger::print_config(bool to_logcat) {
+    char buf[4096];
+    int pos = 0;
+    pos += snprintf(buf + pos, sizeof(buf) - pos,
+        "==========================================\n"
+        " [XLog] init\n"
+        "   namePrefix:  %s\n"
+        "   logDir:      %s\n"
+        "   cacheDir:    %s\n"
+        "   mode:        %s\n"
+        "   fileLevel:   %d\n"
+        "   consoleLevel:%d\n"
+        "   bodySize:    %d\n"
+        "   mmapSize:    %d\n"
+        "   maxFileSize: %d\n"
+        "   maxAliveSec: %lld (%.1f days)\n"
+        "==========================================\n",
+        config_.name_prefix.c_str(),
+        config_.log_dir.c_str(),
+        config_.cache_dir.c_str(),
+        mmap_addr_ ? "MMAP" : "PURE_MEMORY",
+        config_.file_level,
+        config_.console_level,
+        config_.body_size,
+        config_.mmap_size,
+        config_.max_file_size,
+        (long long)config_.max_alive_sec,
+        (double)config_.max_alive_sec / 86400.0);
+
+    if (to_logcat) {
+        __android_log_print(ANDROID_LOG_INFO, "XLog", "%s", buf);
+    }
+
+    // 写文件（如果 fd 有效）
+    if (fd_ >= 0) {
+        ::write(fd_, buf, (size_t)pos);
+    }
+}
+
 // ── MMAP 恢复 ─────────────────────────────────────────
 
 size_t Logger::fix() {
@@ -73,9 +126,13 @@ bool Logger::init(const LoggerConfig& config) {
     running_ = true;
     flush_thread_ = new std::thread(&Logger::async_flush_loop, this);
 
-    // 写入启动配置（走正常写入路径，文件和 logcat 按各自级别处理）
+    // 输出启动配置
+    char mode_str[32];
+    snprintf(mode_str, sizeof(mode_str), "%s", mmap_addr_ ? "MMAP" : "PURE_MEMORY");
+    write(LEVEL_INFO, "XLog", "=== XLog init complete ===");
+
     char cfg_line[512];
-    snprintf(cfg_line, sizeof(cfg_line), "=== XLog init complete ===");
+    snprintf(cfg_line, sizeof(cfg_line), "  mode:        %s", mode_str);
     write(LEVEL_INFO, "XLog", cfg_line);
     snprintf(cfg_line, sizeof(cfg_line), "  namePrefix:  %s", config_.name_prefix.c_str());
     write(LEVEL_INFO, "XLog", cfg_line);
@@ -108,7 +165,7 @@ void Logger::write(LogLevel level, const char* tag, const char* msg) {
     if (!mmap_addr_ || !running_) return;
 
     // 输出到 logcat
-    if (level >= console_level_ && console_level_ != LEVEL_SILENT) {
+    if (console_level_ != LEVEL_SILENT && level >= console_level_) {
         int android_level;
         switch (level) {
             case LEVEL_VERBOSE: android_level = ANDROID_LOG_VERBOSE; break;
@@ -170,10 +227,9 @@ void Logger::write(LogLevel level, const char* tag, const char* msg) {
     }
 
     // 刷完后还放不下（body_size 大于 MMAP 可用空间）→ 直写 .xlog，不经过 MMAP
-    // 这种情况说明 bodySize 和 mmapSize 配置不匹配，日志中会给出警告
     if (write_pos + entry_size > mmap_size_) {
-        int suggested_mmap = body_len + 6 + 8 + 4096;  // body + overhead + 4KB 余量
-        int suggested_body = (mmap_size_ - header - 6) * 3 / 4;  // 可用空间的 75%
+        int suggested_mmap = body_len + 6 + 8 + 4096;
+        int suggested_body = (mmap_size_ - header - 6) * 3 / 4;
         __android_log_print(ANDROID_LOG_WARN, "XLog",
             "[XLog] body_size=%d 单条超出 MMAP 可用空间 %zu，该条已直写 .xlog。"
             "建议: 增大 mmapSize 至 >=%d，或减小 bodySize 至 <=%d。"
@@ -223,7 +279,6 @@ void Logger::flush_all() {
     }
     mmap_pos_ = header;
     *static_cast<size_t*>(mmap_addr_) = mmap_pos_;
-    // 清掉第一个字节的魔数，fix() 下次不会误读已刷过的条目
     static_cast<char*>(mmap_addr_)[header] = kMagicEnd;
 }
 
@@ -232,17 +287,23 @@ void Logger::flush_all() {
 void Logger::async_flush_loop() {
     std::unique_lock<std::mutex> lock(flush_mutex_);
     while (running_) {
-        flush_cv_.wait_for(lock, std::chrono::seconds(2));
+        flush_cv_.wait_for(lock, std::chrono::seconds(10));
+        bool is_manual = manual_flush_.exchange(false);
 
         std::lock_guard<std::mutex> buf_lock(mutex_);
-        // 无论是否有 notify，只要 MMAP 里有数据就刷
         if (mmap_pos_ > sizeof(size_t)) {
+            // 自动定时刷盘：写入分隔标记（手动触发的由 Kotlin 层写，不重复写）
+            if (!is_manual) {
+                const char* delim = "---============ 自动刷新到文件 ============---\n";
+                write_text_to_file(delim, strlen(delim));
+            }
             flush_all();
         }
     }
 }
 
 void Logger::flush() {
+    manual_flush_.store(true);
     need_flush_.store(true);
     flush_cv_.notify_one();
 }
@@ -271,31 +332,74 @@ void Logger::write_text_to_file(const char* text, size_t len) {
     snprintf(date_str, sizeof(date_str), "%04d%02d%02d",
              tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday);
 
+    // ── 跨天：关闭旧文件，打开新文件并补文件头 ──
     if (current_date_ != date_str) {
         if (fd_ >= 0) ::close(fd_);
         current_date_ = date_str;
         current_index_ = 0;
         clean_expired_files(config_.log_dir, config_.name_prefix, config_.max_alive_sec);
-        std::string path = config_.log_dir + "/" + config_.name_prefix + "_" + date_str + ".xlog";
+
+        std::string path = build_log_path(config_.log_dir, config_.name_prefix, date_str, 0);
         fd_ = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd_ < 0) return;
+
+        // 仅空文件写入配置头（跨天 / 首次启动），已存在的当天文件不追加
+        struct stat st;
+        if (fstat(fd_, &st) != 0 || st.st_size == 0) {
+            print_config(false);
+        }
     }
+
+    // ── fd 无效时尝试重开（外部删除后重建） ──
     if (fd_ < 0) {
-        std::string path = config_.log_dir + "/" + config_.name_prefix + "_" + date_str + ".xlog";
+        current_index_ = 0;
+        std::string path = build_log_path(config_.log_dir, config_.name_prefix, current_date_, 0);
         fd_ = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd_ < 0) return;
+
+        // 仅新文件写入配置头（被删除后重建 / 首次启动）
+        struct stat st;
+        if (fstat(fd_, &st) != 0 || st.st_size == 0) {
+            print_config(false);
+        }
     }
+
+    // ── 检查当前文件是否被外部删除（句柄还指向旧 inode，文件已不可见） ──
+    {
+        std::string expected = build_log_path(config_.log_dir, config_.name_prefix,
+                                              current_date_, current_index_);
+        struct stat fs;
+        if (stat(expected.c_str(), &fs) != 0) {
+            // 文件已被外部删除，关闭旧句柄，从第一个包开始
+            ::close(fd_);
+            fd_ = -1;
+            current_index_ = 0;
+            std::string path = build_log_path(config_.log_dir, config_.name_prefix,
+                                              current_date_, 0);
+            fd_ = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (fd_ < 0) return;
+
+            // 文件被重建，写入配置头后继续写当前条目
+            struct stat st2;
+            if (fstat(fd_, &st2) != 0 || st2.st_size == 0) {
+                print_config(false);
+            }
+        }
+    }
+
+    // ── 文件大小超限 → 分片 ──
     if (config_.max_file_size > 0) {
         struct stat st;
         if (fstat(fd_, &st) == 0 && st.st_size + (off_t)len > config_.max_file_size) {
             ::close(fd_);
             current_index_++;
-            std::string path = config_.log_dir + "/" + config_.name_prefix + "_"
-                               + current_date_ + "_" + std::to_string(current_index_) + ".xlog";
+            std::string path = build_log_path(config_.log_dir, config_.name_prefix,
+                                              current_date_, current_index_);
             fd_ = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
             if (fd_ < 0) return;
         }
     }
+
     ::write(fd_, text, len);
 }
 
