@@ -19,7 +19,7 @@ import android.util.Log
  *
  * 日志文件输出到 ${filesDir}/log/ 目录，纯文本 .xlog 格式。
  */
-object XLog {
+object XLog : ILog {
 
     private const val TAG = "XLog"
     private var initialized = false
@@ -48,6 +48,9 @@ object XLog {
 
     /** 单文件分割大小，0=不分割 */
     const val DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024
+
+    /** init 时实际生效的 bodySize（clamp 后），分条逻辑以此为准 */
+    private var bodySize = DEFAULT_BODY_SIZE
 
     /** full() 每条预留头部分片标记 */
     private const val PART_HEADER = 80
@@ -89,6 +92,7 @@ object XLog {
             val result = nativeInit(logDir, cacheDir, namePrefix, fileLevel, consoleLevel, bodySize, mmapSize, maxFileSize)
             if (result) {
                 initialized = true
+                this.bodySize = bodySize.coerceIn(MIN_BODY_SIZE, MAX_BODY_SIZE)
                 i(TAG, "init succeeded")
             } else {
                 Log.e(TAG, "nativeInit failed")
@@ -97,6 +101,11 @@ object XLog {
             Log.e(TAG, "init failed: ${e.message}")
         }
     }
+
+    // ── 日志接口（ILog 实现）──────────────────────────
+
+    /** ILog 实现：直接写本地文件 */
+    override fun log(level: Int, tag: String, msg: String) = write(level, tag, msg)
 
     // ── 日志接口 ───────────────────────────────────────
 
@@ -115,11 +124,28 @@ object XLog {
     @JvmStatic
     fun e(tag: String, msg: String?) = write(LEVEL_ERROR, tag, msg)
 
-    // ── 内部写入口 ───────────────────────────────────
-
+    /**
+     * 内部写入口：所有日志级别的统一出口。
+     *
+     * 超长内容（超过 bodySize）自动分多条写入，每条带 P$n 分片标记——
+     * native 层对放不进格式缓冲的条目会直接丢弃，因此分条必须在 Kotlin 层完成。
+     * 每片正文取 bodySize - PART_HEADER（预留 native 格式头部 + 分片前缀）。
+     */
     private fun write(level: Int, tag: String, msg: String?) {
         if (msg == null) return
-        nativeWrite(level, tag, msg)
+        if (msg.length <= bodySize) {
+            nativeWrite(level, tag, msg)
+            return
+        }
+        val cs = bodySize - PART_HEADER
+        var offset = 0
+        var part = 0
+        while (offset < msg.length) {
+            val end = minOf(offset + cs, msg.length)
+            nativeWrite(level, tag, if (part == 0) msg.substring(offset, end) else "[P$part] ${msg.substring(offset, end)}")
+            offset = end
+            part++
+        }
     }
 
     private fun levelName(level: Int): String = when (level) {
@@ -130,35 +156,6 @@ object XLog {
         LEVEL_WARNING -> "WARNING"
         LEVEL_ERROR   -> "ERROR"
         else          -> "UNKNOWN"
-    }
-
-    // ── 长日志专用 ────────────────────────────────────
-
-    /**
-     * 写入长日志，不截断，超过 bodySize 自动分多条。
-     * 适合接口响应体等需要完整内容但可能超过 C++ 格式缓冲的场景。
-     *
-     * @param tag      TAG
-     * @param msg      日志内容
-     * @param level    日志级别，默认 INFO
-     * @param bodySize 每条上限，默认 DEFAULT_BODY_SIZE（应与 init() 中 bodySize 一致）
-     */
-    @JvmStatic
-    @JvmOverloads
-    fun full(tag: String, msg: String, level: Int = LEVEL_INFO, bodySize: Int = DEFAULT_BODY_SIZE) {
-        if (msg.length <= bodySize) {
-            nativeWrite(level, tag, msg)
-            return
-        }
-        val chunkSize = bodySize - PART_HEADER
-        var offset = 0
-        var part = 0
-        while (offset < msg.length) {
-            val end = minOf(offset + chunkSize, msg.length)
-            nativeWrite(level, tag, if (part == 0) msg.substring(offset, end) else "[P$part] ${msg.substring(offset, end)}")
-            offset = end
-            part++
-        }
     }
 
     // ── 控制 ──────────────────────────────────────────

@@ -9,7 +9,7 @@
 - **按天 + 按大小自动分片** — 每天一个文件，超 50MB 自动分割（可配置）
 - **自动清理** — 默认保留 7 天，过期文件自动删除
 - **双级别独立控制** — 文件输出和 logcat 输出可分别设置级别
-- **大日志分条** — `full()` 方法自动将超长内容拆成多条写入
+- **大日志分条** — 超长内容（超过 bodySize）自动拆成多条写入，不截断
 - **零依赖** — 仅依赖 Android NDK + log 库，无第三方
 - **纯文本** — 不加密、不压缩，.xlog 文件可直接 cat 查看
 
@@ -50,15 +50,45 @@ implementation(project(":logger"))
 // Application.onCreate
 XLog.init(this)
 
-// 任意位置 — 签名与 android.util.Log 一致
+// 任意位置 — 签名与 android.util.Log 一致，超长内容自动分条
 XLog.v("TAG", "verbose")
 XLog.d("TAG", "debug")
 XLog.i("TAG", "info")
 XLog.e("TAG", "error: ${e.message}")
-
-// 长日志（超 bodySize 自动分多条）
-XLog.full("API", responseBody)
+XLog.i("API", responseBody)   // 长响应体自动分多条，无需专用方法
 ```
+
+## 多进程日志回传（子进程不初始化）
+
+场景：进程 A 已初始化 XLog，进程 B 是 A 创建的独立进程。B 不想再初始化一轮 XLog
+（单独初始化会把日志写到 B 自己的文件，与 A 不在一起），而是把日志回传给 A 落盘。
+
+思路：**B 持有一个回调引用（AIDL 接口，项目自定义），A 实现该回调（内部调 XLog）
+并通过 AIDL 传给 B；B 打日志时把 level/tag/content 三个参数回调给 A，由 A 的 XLog 落盘**。
+
+```kotlin
+// ① 项目内定义 AIDL 回调接口（注意 log 必须 oneway，避免 B 调用线程阻塞）
+//    IXLogCallback.aidl:
+//    interface IXLogCallback {
+//        oneway void log(int level, String tag, String content);
+//    }
+
+// ② 父进程 A（已 init）：实现回调，内部调 XLog 写入自身文件
+val callback = object : IXLogCallback.Stub() {
+    override fun log(level: Int, tag: String, content: String) {
+        XLog.log(level, tag, content)   // XLog 已初始化 → 写 A 的文件（超长自动分条）
+    }
+}
+// 通过 Intent extra 或 bindService 把 callback（binder）传给进程 B
+
+// ③ 子进程 B：持有回调引用，直接回调 level/tag/content
+var callback: IXLogCallback? = null   // A 通过 AIDL 赋值
+// 打日志：
+callback?.log(XLog.LEVEL_INFO, "TAG", "content")
+```
+
+B 无需 init；未赋值时判空跳过。如需 logcat 兜底（不判空、不静默丢），可自行包一层
+`DefaultLog`（库提供，输出到 logcat）。
 
 ## 初始化参数
 
@@ -194,8 +224,7 @@ I/XLog: [XLog] ===================
 | 方法 | 说明 |
 |------|------|
 | `init(context, ...)` | 初始化，应在 Application.onCreate 中调用一次 |
-| `v/d/i/w/e(tag, msg)` | 日志输出，`msg` 为 null 时不写入 |
-| `full(tag, msg, level, bodySize)` | 长日志分多条，超 bodySize 自动拆分 |
+| `v/d/i/w/e/a(tag, msg)` | 日志输出（覆盖全部级别），`msg` 为 null 时不写入；超长内容自动分多条 |
 | `flush()` | 强制刷盘 |
 | `close()` | 关闭日志引擎（应用退出时可选） |
 
