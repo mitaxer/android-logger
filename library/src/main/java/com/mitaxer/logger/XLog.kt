@@ -1,6 +1,7 @@
 package com.mitaxer.logger
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 
 /**
@@ -22,6 +23,15 @@ import android.util.Log
 object XLog : ILog {
 
     private const val TAG = "XLog"
+
+    /**
+     * 是否已成功初始化。
+     *
+     * 用 @Volatile 保证跨线程可见性（init/close 写入，write/isInitialized 读取）；
+     * 双初始化竞态由 init() 的 @Synchronized 串行化解决，不需要 AtomicBoolean+CAS——
+     * CAS 先置位再初始化的模式会让并发调用方在初始化完成前就看到 true。
+     */
+    @Volatile
     private var initialized = false
 
     // 日志级别（使用 Android SDK 官方常量）
@@ -61,11 +71,15 @@ object XLog : ILog {
      * @param context       Application context
      * @param namePrefix    日志文件名前缀，默认 "APP"
      * @param fileLevel     文件输出级别，低于此级别不写文件。默认 LEVEL_VERBOSE（全量）
-     * @param consoleLevel  logcat 输出级别，低于此级别不输出。默认 LEVEL_SILENT（关闭）
+     * @param consoleLevel  logcat 输出级别，低于此级别不输出。默认 LEVEL_VERBOSE（全量）
      * @param bodySize      格式缓冲大小，低于 MIN_BODY_SIZE 取 MIN，高于 MAX_BODY_SIZE 取 MAX
      * @param mmapSize      MMAP 缓冲大小，低于 MIN_MMAP_SIZE 取 MIN，高于 MAX_MMAP_SIZE 取 MAX
      * @param maxFileSize   单文件分割大小（字节），0=不分割。默认 50MB
+     * @param appVersion    版本号。不传时自动取 PackageManager 的 versionName，
+     *                      可传自定义值覆盖（如 hotfix/渠道标记 "5.2.0-patch3"）
+     * @param deviceInfo    设备信息。不传时自动收集（品牌/型号/系统版本/ABI）
      */
+    @Synchronized
     @JvmStatic
     @JvmOverloads
     fun init(
@@ -75,7 +89,9 @@ object XLog : ILog {
         consoleLevel: Int = LEVEL_VERBOSE,
         bodySize: Int = DEFAULT_BODY_SIZE,
         mmapSize: Int = DEFAULT_MMAP_SIZE,
-        maxFileSize: Int = DEFAULT_MAX_FILE_SIZE
+        maxFileSize: Int = DEFAULT_MAX_FILE_SIZE,
+        appVersion: String? = null,
+        deviceInfo: String? = null
     ) {
         if (initialized) {
             Log.w(TAG, "already initialized")
@@ -89,7 +105,10 @@ object XLog : ILog {
             java.io.File(logDir).mkdirs()
             java.io.File(cacheDir).mkdirs()
 
-            val result = nativeInit(logDir, cacheDir, namePrefix, fileLevel, consoleLevel, bodySize, mmapSize, maxFileSize)
+            val version = appVersion ?: fetchAppVersion(context)
+            val device = deviceInfo ?: buildDeviceInfo()
+
+            val result = nativeInit(logDir, cacheDir, namePrefix, fileLevel, consoleLevel, bodySize, mmapSize, maxFileSize, version, device)
             if (result) {
                 initialized = true
                 this.bodySize = bodySize.coerceIn(MIN_BODY_SIZE, MAX_BODY_SIZE)
@@ -101,6 +120,21 @@ object XLog : ILog {
             Log.e(TAG, "init failed: ${e.message}")
         }
     }
+
+    // ── init 辅助：版本号/设备信息收集 ────────────────
+
+    /** 取当前 app 版本号（versionName），取不到返回 "unknown" */
+    private fun fetchAppVersion(context: Context): String = try {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    } catch (e: Exception) {
+        null
+    } ?: "unknown"
+
+    /** 收集非标识性设备信息：品牌 型号, 系统版本 (API level), ABI */
+    private fun buildDeviceInfo(): String =
+        "${Build.BRAND} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), " +
+            (Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
 
     // ── 日志接口（ILog 实现）──────────────────────────
 
@@ -132,6 +166,8 @@ object XLog : ILog {
      * 每片正文取 bodySize - PART_HEADER（预留 native 格式头部 + 分片前缀）。
      */
     private fun write(level: Int, tag: String, msg: String?) {
+        // 未初始化直接丢弃，避免在 native 未就绪时调用（native 层同样会静默 no-op）
+        if (!initialized) return
         if (msg == null) return
         if (msg.length <= bodySize) {
             nativeWrite(level, tag, msg)
@@ -164,9 +200,12 @@ object XLog : ILog {
     @JvmStatic
     fun flush() {
         if (!initialized) return
-        nativeWrite(LEVEL_INFO, TAG, "---============ 手动刷新到文件 ============---")
         nativeFlush()
     }
+
+    /** 是否已成功初始化（可查询，便于调用方决定是否打日志/是否需要重新 init） */
+    @JvmStatic
+    fun isInitialized(): Boolean = initialized
 
     /** 关闭日志引擎 */
     @JvmStatic
@@ -186,7 +225,9 @@ object XLog : ILog {
         consoleLevel: Int,
         bodySize: Int,
         mmapSize: Int,
-        maxFileSize: Int
+        maxFileSize: Int,
+        appVersion: String,
+        deviceInfo: String
     ): Boolean
 
     private external fun nativeWrite(level: Int, tag: String, msg: String)

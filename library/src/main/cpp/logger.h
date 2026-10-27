@@ -46,6 +46,8 @@ struct LoggerConfig {
     std::string log_dir;          // 日志文件目录
     std::string cache_dir;        // 缓存目录（MMAP 存放位置）
     std::string name_prefix;      // 文件名前缀
+    std::string app_version;      // app 版本号（Kotlin 层自动取或调用方覆盖）
+    std::string device_info;      // 设备信息（Kotlin 层收集）
     int32_t max_file_size = 50 * 1024 * 1024;    // 单文件最大字节，0=不分片
     int64_t max_alive_sec = 7 * 24 * 3600; // 文件过期秒数
     LogLevel file_level = LEVEL_VERBOSE;    // 文件输出级别
@@ -96,8 +98,6 @@ private:
     std::condition_variable flush_cv_;
     std::thread* flush_thread_ = nullptr;
     std::atomic<bool> running_{false};
-    std::atomic<bool> need_flush_{false};
-    std::atomic<bool> manual_flush_{false};
 };
 
 } // namespace mitaxer

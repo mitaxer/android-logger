@@ -153,6 +153,10 @@ bool Logger::init(const LoggerConfig& config) {
     snprintf(cfg_line, sizeof(cfg_line), "  maxAliveSec: %lld (%.1f 天)", (long long)config_.max_alive_sec,
              (double)config_.max_alive_sec / 86400.0);
     write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  appVersion:  %s", config_.app_version.c_str());
+    write(LEVEL_INFO, "XLog", cfg_line);
+    snprintf(cfg_line, sizeof(cfg_line), "  deviceInfo:  %s", config_.device_info.c_str());
+    write(LEVEL_INFO, "XLog", cfg_line);
     snprintf(cfg_line, sizeof(cfg_line), "=======================");
     write(LEVEL_INFO, "XLog", cfg_line);
 
@@ -252,7 +256,8 @@ void Logger::write(LogLevel level, const char* tag, const char* msg) {
     *static_cast<size_t*>(mmap_addr_) = mmap_pos_;
 
     size_t used = mmap_pos_ - header;
-    if (used > mmap_size_ / 3) { need_flush_.store(true); flush_cv_.notify_one(); }
+    // 缓冲超 1/3 时提前唤醒刷盘线程，不等 10 秒定时
+    if (used > mmap_size_ / 3) { flush_cv_.notify_one(); }
 }
 
 // ── 将 MMAP 条目解码为纯文本写入文件 ────────────────
@@ -283,34 +288,24 @@ void Logger::flush_all() {
 }
 
 // ── 异步刷盘 ─────────────────────────────────────────
-
 void Logger::async_flush_loop() {
     std::unique_lock<std::mutex> lock(flush_mutex_);
     while (running_) {
         flush_cv_.wait_for(lock, std::chrono::seconds(10));
-        bool is_manual = manual_flush_.exchange(false);
 
         std::lock_guard<std::mutex> buf_lock(mutex_);
         if (mmap_pos_ > sizeof(size_t)) {
-            // 自动定时刷盘：写入分隔标记（手动触发的由 Kotlin 层写，不重复写）
-            if (!is_manual) {
-                const char* delim = "---============ 自动刷新到文件 ============---\n";
-                write_text_to_file(delim, strlen(delim));
-            }
             flush_all();
         }
     }
 }
 
 void Logger::flush() {
-    manual_flush_.store(true);
-    need_flush_.store(true);
     flush_cv_.notify_one();
 }
 
 void Logger::close() {
     running_.store(false);
-    need_flush_.store(true);
     flush_cv_.notify_one();
     if (flush_thread_ && flush_thread_->joinable()) {
         flush_thread_->join();

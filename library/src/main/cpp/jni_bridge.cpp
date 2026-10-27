@@ -15,16 +15,22 @@ Java_com_mitaxer_logger_XLog_nativeInit(
         jint console_level,
         jint body_size,
         jint mmap_size,
-        jint max_file_size) {
+        jint max_file_size,
+        jstring app_version,
+        jstring device_info) {
 
     const char* dir = env->GetStringUTFChars(log_dir, nullptr);
     const char* cache = env->GetStringUTFChars(cache_dir, nullptr);
     const char* prefix = env->GetStringUTFChars(name_prefix, nullptr);
+    const char* version = env->GetStringUTFChars(app_version, nullptr);
+    const char* device = env->GetStringUTFChars(device_info, nullptr);
 
     mitaxer::LoggerConfig config;
     config.log_dir = dir;
     config.cache_dir = cache;
     config.name_prefix = prefix;
+    config.app_version = version;
+    config.device_info = device;
     config.file_level = static_cast<mitaxer::LogLevel>(file_level);
     config.console_level = static_cast<mitaxer::LogLevel>(console_level);
     config.body_size = body_size;
@@ -36,6 +42,8 @@ Java_com_mitaxer_logger_XLog_nativeInit(
     env->ReleaseStringUTFChars(log_dir, dir);
     env->ReleaseStringUTFChars(cache_dir, cache);
     env->ReleaseStringUTFChars(name_prefix, prefix);
+    env->ReleaseStringUTFChars(app_version, version);
+    env->ReleaseStringUTFChars(device_info, device);
 
     return result ? JNI_TRUE : JNI_FALSE;
 }
