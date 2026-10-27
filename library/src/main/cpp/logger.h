@@ -80,8 +80,8 @@ private:
     size_t fix();
     // 将 MMAP 所有条目解码写入文件
     void flush_all();
-    // 写入纯文本到日志文件
-    void write_text_to_file(const char* text, size_t len);
+    // 写入纯文本到日志文件；entry_date 为条目自身日期（"YYYYMMDD"，空则用当前日期）
+    void write_text_to_file(const char* text, size_t len, const std::string& entry_date);
 
     LoggerConfig config_;
     void* mmap_addr_ = nullptr;       // MMAP 基址
